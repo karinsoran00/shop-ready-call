@@ -15,7 +15,7 @@
     </header>
     <main class="staff-grid">
       <section class="card pad-card">
-        <p class="lead">Type the bill number, choose the minutes, then add it.</p>
+        <p class="lead">Type the bill number and the minutes. The customer scans the QR. They do not choose a number.</p>
         <p id="digits" class="digits" aria-live="polite">—</p>
         <div class="keys">
           <button type="button" data-digit="1">1</button>
@@ -52,15 +52,15 @@
       </section>
 
       <section class="card qr-card">
-        <h2>Customer page</h2>
-        <img id="qr" src="/qr.png" width="180" height="180" alt="QR code that opens the customer page">
+        <h2 id="qr-title">Customer QR</h2>
+        <img id="qr" hidden width="180" height="180" alt="QR code for this bill number">
         <p id="link" class="link"></p>
-        <p id="hint" class="hint">The QR code only opens the page. The cashier still takes the order.</p>
-        <button type="button" class="print" onclick="window.print()">Print the QR</button>
+        <p id="hint" class="hint">Add the bill number. Its QR appears here. The customer only scans it.</p>
+        <button type="button" class="print" hidden onclick="window.print()">Print the QR</button>
       </section>
     </main>
   </div>
   <script src="js/shop-api.js?v=2"></script>
-  <script src="js/staff.js?v=2"></script>
+  <script src="js/staff.js?v=3"></script>
 </body>
 </html>

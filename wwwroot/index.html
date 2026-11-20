@@ -13,24 +13,8 @@
     <h1>Your order</h1>
 
     <section id="entry" class="card">
-      <p class="lead">Type the number from your bill.</p>
-      <p id="digits" class="digits" aria-live="polite">—</p>
-      <div class="keys">
-        <button type="button" data-digit="1">1</button>
-        <button type="button" data-digit="2">2</button>
-        <button type="button" data-digit="3">3</button>
-        <button type="button" data-digit="4">4</button>
-        <button type="button" data-digit="5">5</button>
-        <button type="button" data-digit="6">6</button>
-        <button type="button" data-digit="7">7</button>
-        <button type="button" data-digit="8">8</button>
-        <button type="button" data-digit="9">9</button>
-        <button type="button" data-action="clear">C</button>
-        <button type="button" data-digit="0">0</button>
-        <button type="button" data-action="back" aria-label="Delete">⌫</button>
-      </div>
+      <p class="lead">Your number comes from the counter. Scan the QR there.</p>
       <p id="entry-message" class="message" role="status"></p>
-      <button type="button" id="watch" class="primary" disabled>Show the timer</button>
     </section>
 
     <section id="waiting" class="card stage" hidden>
@@ -50,6 +34,6 @@
   </div>
   <audio id="alarm" src="alarm.wav?v=7" playsinline preload="auto"></audio>
   <script src="js/shop-api.js?v=2"></script>
-  <script src="js/customer.js?v=8"></script>
+  <script src="js/customer.js?v=9"></script>
 </body>
 </html>

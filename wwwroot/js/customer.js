@@ -1,8 +1,6 @@
 const entry = document.querySelector("#entry");
 const waiting = document.querySelector("#waiting");
 const ready = document.querySelector("#ready");
-const digits = document.querySelector("#digits");
-const watchButton = document.querySelector("#watch");
 const entryMessage = document.querySelector("#entry-message");
 const waitNumber = document.querySelector("#wait-number");
 const clockEl = document.querySelector("#clock");
@@ -13,7 +11,6 @@ const ringButton = document.querySelector("#ring");
 const reviewLink = document.querySelector("#review");
 const alarm = document.querySelector("#alarm");
 
-const storageKey = "shop-ready-bill";
 let number = "";
 let mode = "entry";
 let reviewUrl = "";
@@ -26,9 +23,9 @@ let alerting = false;
 let ringsLeft = 0;
 let chimeId = 0;
 
-function paintNumber() {
-  digits.textContent = number || "—";
-  watchButton.disabled = number.length === 0;
+function assignedNumber() {
+  const bill = (new URLSearchParams(location.search).get("order") || "").trim();
+  return /^[0-9]{1,6}$/.test(bill) ? bill : "";
 }
 
 function show(section) {
@@ -37,43 +34,10 @@ function show(section) {
   ready.hidden = section !== ready;
 }
 
-document.querySelectorAll("[data-digit]").forEach((button) => {
-  button.addEventListener("click", () => {
-    if (number.length >= 6) return;
-    number += button.dataset.digit;
-    entryMessage.textContent = "";
-    paintNumber();
-  });
+document.addEventListener("pointerdown", () => {
+  if (number && !soundReady) unlock();
 });
 
-document.querySelector("[data-action='clear']").addEventListener("click", () => {
-  number = "";
-  paintNumber();
-});
-
-document.querySelector("[data-action='back']").addEventListener("click", () => {
-  number = number.slice(0, -1);
-  paintNumber();
-});
-
-document.addEventListener("keydown", (event) => {
-  if (mode !== "entry") return;
-  if (event.target instanceof HTMLButtonElement) return;
-  if (event.key >= "0" && event.key <= "9") {
-    if (number.length < 6) number += event.key;
-    paintNumber();
-  } else if (event.key === "Backspace") {
-    number = number.slice(0, -1);
-    paintNumber();
-  } else if (event.key === "Enter") {
-    startWatch();
-  }
-});
-
-watchButton.addEventListener("click", () => {
-  const notify = askNotify();
-  startWatch(notify);
-});
 ringButton.addEventListener("click", async () => {
   if (!isPhone()) return;
   if (alerting && !alarm.paused) {
@@ -220,7 +184,6 @@ function startChime(bill) {
 function showEntry(text) {
   mode = "entry";
   stopChime();
-  clearInterval(pollTimer);
   show(entry);
   entryMessage.textContent = text || "";
 }
@@ -255,8 +218,7 @@ async function lookup() {
   const response = await shopFetch("/api/orders/lookup?number=" + encodeURIComponent(number));
   if (response.status === 404) {
     if (mode === "ready") return;
-    sessionStorage.removeItem(storageKey);
-    showEntry("That number is not on the list yet.");
+    showEntry("Number " + number + " is not on the list yet. Ask the counter.");
     return;
   }
   if (!response.ok) return;
@@ -270,12 +232,9 @@ async function startWatch(notify) {
   await unlock();
   if (notify) await notify;
   await keepAwake();
-  sessionStorage.setItem(storageKey, number);
-  watchButton.disabled = true;
   await lookup();
-  watchButton.disabled = number.length === 0;
   clearInterval(pollTimer);
-  if (mode !== "entry") pollTimer = setInterval(lookup, 2000);
+  pollTimer = setInterval(lookup, 2000);
 }
 
 shopFetch("/api/config")
@@ -289,12 +248,8 @@ shopFetch("/api/config")
   })
   .catch(() => {});
 
-const saved = sessionStorage.getItem(storageKey);
-if (saved) {
-  number = saved;
-  paintNumber();
-  startWatch();
-}
+number = assignedNumber();
+if (number) startWatch(askNotify());
+else showEntry("Scan the QR from the counter.");
 
 setInterval(paintClock, 1000);
-paintNumber();

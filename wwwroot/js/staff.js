@@ -85,6 +85,7 @@ async function addOrder() {
     }
     number = "";
     paintNumber();
+    showOrderQr(body.billNumber);
     await loadOrders();
   } catch {
     setMessage("The server did not answer.");
@@ -150,7 +151,16 @@ function paintOrders() {
       button.addEventListener("click", () => markReady(order.id, button));
     }
 
-    row.append(text, button);
+    const actions = document.createElement("div");
+    actions.className = "order-actions";
+    const showQr = document.createElement("button");
+    showQr.type = "button";
+    showQr.className = "quiet";
+    showQr.textContent = "Customer QR";
+    showQr.addEventListener("click", () => showOrderQr(order.billNumber));
+    actions.append(showQr, button);
+
+    row.append(text, actions);
     ordersEl.append(row);
   }
 }
@@ -173,6 +183,14 @@ async function loadOrders() {
   const unchanged = sameList(next);
   orders = next;
   syncedAt = Date.now();
+  if (shownBill && !orders.some((order) => order.billNumber === shownBill)) {
+    shownBill = "";
+    document.querySelector("#qr-title").textContent = "Customer QR";
+    document.querySelector("#qr").hidden = true;
+    document.querySelector("#link").textContent = "";
+    document.querySelector("#hint").textContent = "Add the bill number. Its QR appears here. The customer only scans it.";
+    document.querySelector(".print").hidden = true;
+  }
   if (unchanged) paintTimes();
   else paintOrders();
 }
@@ -189,26 +207,24 @@ async function removeOrder(id) {
   await loadOrders();
 }
 
-async function loadLink() {
-  const page = new URL("./", location.href).href;
-  const linkEl = document.querySelector("#link");
+let shownBill = "";
+
+function orderLink(bill) {
+  const url = new URL("./", location.href);
+  url.searchParams.set("order", bill);
+  return url.href;
+}
+
+function showOrderQr(bill) {
+  shownBill = bill;
+  const page = orderLink(bill);
+  document.querySelector("#qr-title").textContent = "Number " + bill;
+  document.querySelector("#link").textContent = page;
   const qr = document.querySelector("#qr");
-  if (!isLocalServer()) {
-    linkEl.textContent = page;
-    qr.src = "https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=8&data=" + encodeURIComponent(page);
-    return;
-  }
-  const response = await shopFetch("/api/link");
-  if (!response.ok) {
-    linkEl.textContent = page;
-    return;
-  }
-  const link = await response.json();
-  linkEl.textContent = link.url;
-  const hint = document.querySelector("#hint");
-  if (link.onThisComputerOnly) {
-    hint.textContent = "This address only works on this computer. On the shop Wi-Fi, phones can open the page.";
-  }
+  qr.hidden = false;
+  qr.src = "https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=8&data=" + encodeURIComponent(page);
+  document.querySelector("#hint").textContent = "The customer scans this code. The phone opens number " + bill + ".";
+  document.querySelector(".print").hidden = false;
 }
 
 shopFetch("/api/config")
@@ -234,7 +250,6 @@ function paintTimes() {
   }
 }
 
-loadLink();
 loadOrders();
 setInterval(loadOrders, 2000);
 setInterval(paintTimes, 1000);

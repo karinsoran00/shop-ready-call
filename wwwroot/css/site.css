@@ -223,6 +223,12 @@ h1 {
 
 .order-meta.is-late { color: var(--late); font-weight: 700; }
 
+.order-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .ready-button, .quiet { min-width: 118px; }
 
 .ready-button {
