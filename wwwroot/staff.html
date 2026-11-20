@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Staff · Shop Ready-Call</title>
+  <link rel="stylesheet" href="/css/site.css">
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <p class="eyebrow" data-shop-name>Shop Ready-Call</p>
+      <h1>Staff</h1>
+    </header>
+    <main class="staff-grid">
+      <section class="card pad-card">
+        <p class="lead">Type the bill number, choose the minutes, then add it.</p>
+        <p id="digits" class="digits" aria-live="polite">—</p>
+        <div class="keys">
+          <button type="button" data-digit="1">1</button>
+          <button type="button" data-digit="2">2</button>
+          <button type="button" data-digit="3">3</button>
+          <button type="button" data-digit="4">4</button>
+          <button type="button" data-digit="5">5</button>
+          <button type="button" data-digit="6">6</button>
+          <button type="button" data-digit="7">7</button>
+          <button type="button" data-digit="8">8</button>
+          <button type="button" data-digit="9">9</button>
+          <button type="button" data-action="clear">C</button>
+          <button type="button" data-digit="0">0</button>
+          <button type="button" data-action="back" aria-label="Delete">⌫</button>
+        </div>
+        <p class="minute-label">Minutes</p>
+        <div class="minutes" id="minutes">
+          <button type="button" data-minutes="5">5</button>
+          <button type="button" data-minutes="10">10</button>
+          <button type="button" data-minutes="15">15</button>
+          <button type="button" data-minutes="20">20</button>
+          <button type="button" data-minutes="30">30</button>
+        </div>
+        <p id="message" class="message" role="status"></p>
+        <button type="button" id="add" class="primary" disabled>Add</button>
+      </section>
+
+      <section class="card list-card">
+        <div class="list-head">
+          <h2>Waiting list</h2>
+          <p id="count" class="count">0 waiting</p>
+        </div>
+        <div id="orders" class="orders"></div>
+      </section>
+
+      <section class="card qr-card">
+        <h2>Customer page</h2>
+        <img id="qr" src="/qr.png" width="180" height="180" alt="QR code that opens the customer page">
+        <p id="link" class="link"></p>
+        <p id="hint" class="hint">The QR code only opens the page. The cashier still takes the order.</p>
+        <button type="button" class="print" onclick="window.print()">Print the QR</button>
+      </section>
+    </main>
+  </div>
+  <script src="/js/staff.js"></script>
+</body>
+</html>

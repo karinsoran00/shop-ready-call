@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Your order</title>
+  <link rel="stylesheet" href="/css/site.css">
+</head>
+<body>
+  <div class="phone">
+    <p class="eyebrow" data-shop-name>Shop Ready-Call</p>
+    <h1>Your order</h1>
+
+    <section id="entry" class="card">
+      <p class="lead">Type the number from your bill.</p>
+      <p id="digits" class="digits" aria-live="polite">—</p>
+      <div class="keys">
+        <button type="button" data-digit="1">1</button>
+        <button type="button" data-digit="2">2</button>
+        <button type="button" data-digit="3">3</button>
+        <button type="button" data-digit="4">4</button>
+        <button type="button" data-digit="5">5</button>
+        <button type="button" data-digit="6">6</button>
+        <button type="button" data-digit="7">7</button>
+        <button type="button" data-digit="8">8</button>
+        <button type="button" data-digit="9">9</button>
+        <button type="button" data-action="clear">C</button>
+        <button type="button" data-digit="0">0</button>
+        <button type="button" data-action="back" aria-label="Delete">⌫</button>
+      </div>
+      <p id="entry-message" class="message" role="status"></p>
+      <button type="button" id="watch" class="primary" disabled>Show the timer</button>
+    </section>
+
+    <section id="waiting" class="card stage" hidden>
+      <p class="lead">Bill number</p>
+      <p id="wait-number" class="digits"></p>
+      <p id="clock" class="clock">00:00</p>
+      <p id="wait-note" class="lead">Keep this page open. Your phone rings when the order is ready.</p>
+    </section>
+
+    <section id="ready" class="card stage is-ready" hidden>
+      <p class="ready-kicker">Ready</p>
+      <p id="ready-number" class="digits"></p>
+      <p id="ready-line" class="ready-line">Your order is ready. Please come to the counter.</p>
+      <button type="button" id="ring" class="review" hidden>I see it</button>
+      <a id="review" class="review" hidden target="_blank" rel="noopener">Leave a Google review</a>
+    </section>
+  </div>
+  <audio id="alarm" src="/alarm.wav?v=7" playsinline preload="auto"></audio>
+  <script src="/js/customer.js?v=4"></script>
+</body>
+</html>
