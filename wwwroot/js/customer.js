@@ -155,7 +155,7 @@ function stopChime() {
 
 function notifyReady(bill) {
   if (!canRing()) return;
-  const title = "Your food is ready";
+  const title = "Your order is ready";
   const body = "Order " + bill + ". Please come to the counter.";
   try {
     if ("Notification" in window && Notification.permission === "granted") {
@@ -172,14 +172,14 @@ function notifyReady(bill) {
 
 function speakReady(bill) {
   if (!canRing() || !("speechSynthesis" in window)) return;
-  const line = new SpeechSynthesisUtterance("Your food is ready. Order " + bill + ".");
+  const line = new SpeechSynthesisUtterance("Your order is ready. Order " + bill + ".");
   line.lang = "en";
   speechSynthesis.cancel();
   speechSynthesis.speak(line);
 }
 
 function startChime(bill) {
-  document.title = "Food is ready";
+  document.title = "Your order is ready";
   if (!canRing()) return;
   chimeId += 1;
   alerting = true;
@@ -213,7 +213,7 @@ function showReady(order) {
   const entered = mode !== "ready";
   mode = "ready";
   readyNumber.textContent = order.billNumber;
-  readyLine.textContent = "Your food is ready. Please come to the counter.";
+  readyLine.textContent = "Your order is ready. Please come to the counter.";
   if (reviewUrl) {
     reviewLink.href = reviewUrl;
     reviewLink.hidden = false;
