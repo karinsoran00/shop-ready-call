@@ -252,7 +252,7 @@ function showReady(order) {
 }
 
 async function lookup() {
-  const response = await fetch("/api/orders/lookup?number=" + encodeURIComponent(number));
+  const response = await shopFetch("/api/orders/lookup?number=" + encodeURIComponent(number));
   if (response.status === 404) {
     if (mode === "ready") return;
     sessionStorage.removeItem(storageKey);
@@ -278,7 +278,7 @@ async function startWatch(notify) {
   if (mode !== "entry") pollTimer = setInterval(lookup, 2000);
 }
 
-fetch("/api/config")
+shopFetch("/api/config")
   .then((response) => response.json())
   .then((config) => {
     reviewUrl = config.reviewUrl || "";

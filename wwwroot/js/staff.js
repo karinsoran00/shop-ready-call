@@ -73,7 +73,7 @@ async function addOrder() {
   paintNumber();
   setMessage("");
   try {
-    const response = await fetch("/api/orders", {
+    const response = await shopFetch("/api/orders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ number, minutes })
@@ -167,7 +167,7 @@ function sameList(next) {
 }
 
 async function loadOrders() {
-  const response = await fetch("/api/orders");
+  const response = await shopFetch("/api/orders");
   if (!response.ok) return;
   const next = await response.json();
   const unchanged = sameList(next);
@@ -179,28 +179,39 @@ async function loadOrders() {
 
 async function markReady(id, button) {
   button.disabled = true;
-  const response = await fetch("/api/orders/" + id + "/ready", { method: "POST" });
+  const response = await shopFetch("/api/orders/" + id + "/ready", { method: "POST" });
   if (!response.ok) button.disabled = false;
   await loadOrders();
 }
 
 async function removeOrder(id) {
-  await fetch("/api/orders/" + id, { method: "DELETE" });
+  await shopFetch("/api/orders/" + id, { method: "DELETE" });
   await loadOrders();
 }
 
 async function loadLink() {
-  const response = await fetch("/api/link");
-  if (!response.ok) return;
+  const page = new URL("./", location.href).href;
+  const linkEl = document.querySelector("#link");
+  const qr = document.querySelector("#qr");
+  if (!isLocalServer()) {
+    linkEl.textContent = page;
+    qr.src = "https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=8&data=" + encodeURIComponent(page);
+    return;
+  }
+  const response = await shopFetch("/api/link");
+  if (!response.ok) {
+    linkEl.textContent = page;
+    return;
+  }
   const link = await response.json();
-  document.querySelector("#link").textContent = link.url;
+  linkEl.textContent = link.url;
   const hint = document.querySelector("#hint");
   if (link.onThisComputerOnly) {
     hint.textContent = "This address only works on this computer. On the shop Wi-Fi, phones can open the page.";
   }
 }
 
-fetch("/api/config")
+shopFetch("/api/config")
   .then((response) => response.json())
   .then((config) => {
     document.querySelectorAll("[data-shop-name]").forEach((el) => {
