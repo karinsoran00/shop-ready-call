@@ -7,6 +7,7 @@ const clockEl = document.querySelector("#clock");
 const waitNote = document.querySelector("#wait-note");
 const readyNumber = document.querySelector("#ready-number");
 const readyLine = document.querySelector("#ready-line");
+const armButton = document.querySelector("#arm");
 const ringButton = document.querySelector("#ring");
 const reviewLink = document.querySelector("#review");
 const alarm = document.querySelector("#alarm");
@@ -34,18 +35,19 @@ function show(section) {
   ready.hidden = section !== ready;
 }
 
-document.addEventListener("pointerdown", () => {
-  if (number && !soundReady) unlock();
+armButton.addEventListener("click", async () => {
+  await armSound();
+  paintClock();
 });
 
 ringButton.addEventListener("click", async () => {
-  if (!isPhone()) return;
+  if (!canRing()) return;
   if (alerting && !alarm.paused) {
     stopChime();
     readyLine.textContent = "Seen. Please come to the counter.";
     return;
   }
-  await unlock();
+  await armSound();
   startChime(readyNumber.textContent);
 });
 
@@ -65,12 +67,13 @@ function paintClock() {
   const seconds = shownSeconds();
   if (seconds === 0) clockEl.textContent = "Soon";
   else clockEl.textContent = clock(seconds);
-  if (!isPhone()) {
+  armButton.hidden = !canRing() || soundReady;
+  if (!canRing()) {
     waitNote.textContent = seconds === 0 ? "Any moment now." : "Waiting for the order.";
     return;
   }
   if (!soundReady) {
-    waitNote.textContent = "The phone blocked the sound. Turn off silent mode and tap the page.";
+    waitNote.textContent = "Tap the button once. Then keep this page open.";
     return;
   }
   waitNote.textContent = seconds === 0
@@ -78,24 +81,25 @@ function paintClock() {
     : "Sound is on. Keep this page open. The alert continues until you tap I see it.";
 }
 
-function isPhone() {
-  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+function canRing() {
+  const ua = navigator.userAgent || "";
+  if (/Android|iPhone|iPad|iPod|Mobile/i.test(ua)) return true;
+  return navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
 }
 
-async function unlock() {
-  if (!isPhone()) return;
+async function armSound() {
+  if (!canRing()) return;
   alarm.loop = false;
+  alarm.muted = false;
   alarm.volume = 1;
   try {
     alarm.currentTime = 0;
     await alarm.play();
     soundReady = true;
-    window.setTimeout(() => {
-      if (mode !== "ready") {
-        alarm.pause();
-        alarm.currentTime = 0;
-      }
-    }, 350);
+    if (mode !== "ready" || !alerting) {
+      alarm.pause();
+      alarm.currentTime = 0;
+    }
   } catch {
     soundReady = false;
   }
@@ -103,7 +107,7 @@ async function unlock() {
 
 function askNotify() {
   try {
-    if (!isPhone() || !("Notification" in window) || !window.isSecureContext) return Promise.resolve();
+    if (!canRing() || !("Notification" in window) || !window.isSecureContext) return Promise.resolve();
     if (Notification.permission !== "default") return Promise.resolve();
     return Notification.requestPermission().catch(() => {});
   } catch {
@@ -120,14 +124,20 @@ async function keepAwake() {
 }
 
 function playRing(id) {
-  if (!isPhone() || id !== chimeId || !alerting) return;
+  if (!canRing() || id !== chimeId || !alerting) return;
   alarm.loop = true;
+  alarm.muted = false;
   alarm.volume = 1;
   try { alarm.currentTime = 0; } catch { /* play from the start */ }
-  alarm.play().catch(() => {
+  const played = alarm.play();
+  if (!played) return;
+  played.then(() => {
+    soundReady = true;
+  }).catch(() => {
     if (id !== chimeId) return;
     ringButton.hidden = false;
     ringButton.textContent = "Tap to ring";
+    readyLine.textContent = "Tap the button so the phone can ring.";
   });
 }
 
@@ -144,7 +154,7 @@ function stopChime() {
 }
 
 function notifyReady(bill) {
-  if (!isPhone()) return;
+  if (!canRing()) return;
   const title = "Your food is ready";
   const body = "Order " + bill + ". Please come to the counter.";
   try {
@@ -161,7 +171,7 @@ function notifyReady(bill) {
 }
 
 function speakReady(bill) {
-  if (!isPhone() || !("speechSynthesis" in window)) return;
+  if (!canRing() || !("speechSynthesis" in window)) return;
   const line = new SpeechSynthesisUtterance("Your food is ready. Order " + bill + ".");
   line.lang = "en";
   speechSynthesis.cancel();
@@ -170,15 +180,16 @@ function speakReady(bill) {
 
 function startChime(bill) {
   document.title = "Food is ready";
-  if (!isPhone()) return;
-  stopChime();
+  if (!canRing()) return;
+  chimeId += 1;
   alerting = true;
+  alarm.onended = null;
   notifyReady(bill);
-  speakReady(bill);
   if (navigator.vibrate) navigator.vibrate([400, 150, 400, 150, 400, 150, 700]);
   ringButton.hidden = false;
-  ringButton.textContent = "I see it";
+  ringButton.textContent = soundReady ? "I see it" : "Tap to ring";
   playRing(chimeId);
+  if (soundReady) speakReady(bill);
 }
 
 function showEntry(text) {
@@ -196,9 +207,6 @@ function showWaiting(order) {
   waitNumber.textContent = order.billNumber;
   show(waiting);
   paintClock();
-  if (isPhone() && !soundReady) {
-    waitNote.textContent = "The phone blocked the sound. Turn off silent mode, then tap the page.";
-  }
 }
 
 function showReady(order) {
@@ -229,7 +237,6 @@ async function lookup() {
 
 async function startWatch(notify) {
   if (!number) return;
-  await unlock();
   if (notify) await notify;
   await keepAwake();
   await lookup();
