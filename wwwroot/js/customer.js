@@ -251,13 +251,14 @@ function showReady(order) {
   const entered = mode !== "ready";
   mode = "ready";
   readyNumber.textContent = order.billNumber;
-  readyLine.textContent = "Your order is ready. Please come to the counter.";
   if (reviewUrl) {
     reviewLink.href = reviewUrl;
     reviewLink.hidden = false;
   }
   show(ready);
-  if (entered) startChime(order.billNumber);
+  if (!entered) return;
+  readyLine.textContent = "Your order is ready. Please come to the counter.";
+  startChime(order.billNumber);
 }
 
 async function lookup() {
