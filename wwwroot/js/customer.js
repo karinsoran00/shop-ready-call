@@ -23,6 +23,7 @@ let wakeLock = null;
 const vapidPublicKey = "BE4aPqu9CkHScuixs2LAA-a88Rq6GoAeY-wBHDHA9aVqyX9ovPHt3Rti0GxOu57hRbjIuB_n6U625YHvPhXVQD4";
 let soundReady = false;
 let alertsOn = false;
+let alertNote = "";
 let alerting = false;
 let ringsLeft = 0;
 let chimeId = 0;
@@ -69,14 +70,14 @@ function paintClock() {
   const seconds = shownSeconds();
   if (seconds === 0) clockEl.textContent = "Soon";
   else clockEl.textContent = clock(seconds);
-  armButton.hidden = alertsOn && soundReady;
+  armButton.hidden = alertsOn;
   if (isIos() && !isStandalone()) {
     armButton.hidden = false;
     waitNote.textContent = "On iPhone, tap Share, then Add to Home Screen. Open that icon and tap Turn alerts on.";
     return;
   }
   if (!alertsOn) {
-    waitNote.textContent = "Tap Turn alerts on. Then you can leave this page.";
+    waitNote.textContent = alertNote || "Tap Turn alerts on for this phone.";
     return;
   }
   waitNote.textContent = seconds === 0
@@ -102,21 +103,7 @@ function isStandalone() {
   return window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
 }
 
-async function enableAlerts() {
-  await armSound();
-  if (isIos() && !isStandalone()) {
-    paintClock();
-    return;
-  }
-  if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
-    paintClock();
-    return;
-  }
-  const permission = await Notification.requestPermission();
-  if (permission !== "granted") {
-    waitNote.textContent = "Allow alerts so the phone can ring after you leave this page.";
-    return;
-  }
+async function phoneSubscription() {
   const registration = await navigator.serviceWorker.register("sw.js");
   await navigator.serviceWorker.ready;
   let subscription = await registration.pushManager.getSubscription();
@@ -126,23 +113,62 @@ async function enableAlerts() {
       applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
     });
   }
-  alertsOn = await saveOrderAlert(number, subscription);
+  return subscription;
+}
+
+async function rememberThisPhone() {
+  let lastError = "This phone was not saved.";
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const subscription = await phoneSubscription();
+      const saved = await saveOrderAlert(number, subscription);
+      if (saved.ok) {
+        alertsOn = true;
+        alertNote = "";
+        return;
+      }
+      lastError = saved.error || lastError;
+    } catch (error) {
+      lastError = error && error.message ? error.message : lastError;
+    }
+  }
+  alertsOn = false;
+  alertNote = "This phone was not saved. Tap Turn alerts on again.";
+}
+
+async function enableAlerts() {
+  await armSound();
+  alertNote = "";
+  if (isIos() && !isStandalone()) {
+    alertsOn = false;
+    paintClock();
+    return;
+  }
+  if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+    alertsOn = false;
+    alertNote = "This phone cannot alert after you leave the page. Keep this page open.";
+    paintClock();
+    return;
+  }
+  const permission = await Notification.requestPermission();
+  if (permission !== "granted") {
+    alertsOn = false;
+    alertNote = "Tap Allow so this phone can ring after you leave the page.";
+    paintClock();
+    return;
+  }
+  armButton.disabled = true;
+  await rememberThisPhone();
+  armButton.disabled = false;
   paintClock();
 }
 
 async function restoreAlerts() {
+  if (isIos() && !isStandalone()) return;
   if (!("Notification" in window) || Notification.permission !== "granted") return;
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
-  try {
-    const registration = await navigator.serviceWorker.register("sw.js");
-    await navigator.serviceWorker.ready;
-    const subscription = await registration.pushManager.getSubscription();
-    if (!subscription) return;
-    alertsOn = await saveOrderAlert(number, subscription);
-    paintClock();
-  } catch {
-    alertsOn = false;
-  }
+  await rememberThisPhone();
+  paintClock();
 }
 
 function canRing() {

@@ -148,18 +148,35 @@ function shopFetch(path, options) {
   return sharedFetch(path, options);
 }
 
+function thisPhone() {
+  const key = "shop-ready-phone";
+  let id = localStorage.getItem(key);
+  if (!id) {
+    id = crypto.randomUUID
+      ? crypto.randomUUID()
+      : String(Date.now()) + Math.random().toString(16).slice(2);
+    localStorage.setItem(key, id);
+  }
+  return id;
+}
+
 async function saveOrderAlert(bill, subscription) {
-  if (isLocalServer()) return false;
+  if (isLocalServer()) return { ok: false, error: "Open the public page on the phone." };
   const json = subscription.toJSON ? subscription.toJSON() : subscription;
   const response = await fetch(sharedUrl.replace("/orders", "/rpc/save_alert"), {
     method: "POST",
     headers: sharedHeaders(),
     body: JSON.stringify({
       bill,
+      device: thisPhone(),
       endpoint: json.endpoint,
       p256dh: json.keys.p256dh,
       auth: json.keys.auth
     })
   });
-  return response.ok;
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    return { ok: false, error: text || "This phone was not saved." };
+  }
+  return { ok: true };
 }
