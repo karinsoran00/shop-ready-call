@@ -37,19 +37,15 @@ function show(section) {
   ready.hidden = section !== ready;
 }
 
-ringButton.addEventListener("click", async () => {
+ringButton.addEventListener("click", () => {
   if (!canRing()) return;
-  if (alerting && soundReady && !alarm.paused) {
+  if (alerting && !alarm.paused) {
     stopChime();
     readyLine.textContent = "Seen. Please come to the counter.";
     return;
   }
-  await armSound();
-  if (alerting) {
-    playRing(chimeId);
-    return;
-  }
-  startChime(readyNumber.textContent);
+  if (alerting) playRing(chimeId);
+  else holdOpen();
 });
 
 function clock(seconds) {
@@ -68,23 +64,9 @@ function paintClock() {
   const seconds = shownSeconds();
   if (seconds === 0) clockEl.textContent = "Soon";
   else clockEl.textContent = clock(seconds);
-  if (isIos() && !isStandalone()) {
-    waitNote.textContent = "On iPhone, tap Share, then Add to Home Screen. Open that icon.";
-    return;
-  }
-  if (phoneSaved) {
-    waitNote.textContent = seconds === 0
-      ? "Any moment now. You can use other apps."
-      : "You can use other apps. The phone rings when the order is ready.";
-    return;
-  }
-  if (typeof Notification !== "undefined" && Notification.permission === "denied") {
-    waitNote.textContent = "Leave this page open. Your phone rings when the order is ready.";
-    return;
-  }
   waitNote.textContent = seconds === 0
-    ? "Any moment now."
-    : "Tap the screen once and choose Allow. Then you can use other apps.";
+    ? "Any moment now. You can use other apps."
+    : "You can use other apps. The phone rings when the order is ready.";
 }
 
 function urlBase64ToUint8Array(value) {
@@ -140,34 +122,80 @@ function canUsePush() {
 
 function keepAlertAfterLeaving() {
   if (phoneSaved || savingPhone || !canUsePush()) return;
-  if (Notification.permission === "denied") return;
-  if (Notification.permission === "granted") {
-    savingPhone = true;
-    rememberThisPhone().then((ok) => {
-      phoneSaved = ok === true;
-      savingPhone = false;
-      paintClock();
-    }).catch(() => {
-      savingPhone = false;
-    });
-    return;
-  }
-  let pending;
-  try {
-    pending = Notification.requestPermission();
-  } catch {
-    return;
-  }
+  if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
   savingPhone = true;
-  Promise.resolve(pending).then((result) => {
-    if (result !== "granted") return false;
-    return rememberThisPhone();
-  }).then((ok) => {
+  rememberThisPhone().then((ok) => {
     phoneSaved = ok === true;
     savingPhone = false;
-    paintClock();
   }).catch(() => {
     savingPhone = false;
+  });
+}
+
+function filePlaying(name) {
+  const current = alarm.currentSrc || alarm.src || "";
+  return current.indexOf(name) !== -1;
+}
+
+function showOnLockScreen(title) {
+  if (!("mediaSession" in navigator)) return;
+  try {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: title,
+      artist: "Shop Ready-Call"
+    });
+    navigator.mediaSession.playbackState = "playing";
+    if (!showOnLockScreen.ready) {
+      showOnLockScreen.ready = true;
+      const resume = () => {
+        try {
+          if (alerting) playRing(chimeId);
+          else holdOpen();
+        } catch {
+          // The page stays open.
+        }
+      };
+      navigator.mediaSession.setActionHandler("play", resume);
+      navigator.mediaSession.setActionHandler("pause", resume);
+      navigator.mediaSession.setActionHandler("stop", resume);
+    }
+  } catch {
+    // The sound still plays without the lock screen line.
+  }
+}
+
+function clearLockScreen() {
+  if (!("mediaSession" in navigator)) return;
+  try {
+    navigator.mediaSession.playbackState = "none";
+    navigator.mediaSession.metadata = null;
+  } catch {
+    // The sound is already stopped.
+  }
+}
+
+let startingHold = false;
+
+function holdOpen() {
+  if (!canRing() || alerting || mode === "entry" || startingHold) return;
+  if (!alarm.paused && filePlaying("keepalive.wav")) return;
+  startingHold = true;
+  alarm.loop = true;
+  alarm.muted = false;
+  alarm.volume = 1;
+  if (!filePlaying("keepalive.wav")) alarm.src = "keepalive.wav?v=1";
+  const played = alarm.play();
+  if (!played) {
+    startingHold = false;
+    return;
+  }
+  played.then(() => {
+    startingHold = false;
+    soundReady = true;
+    showOnLockScreen("Order " + number);
+  }).catch(() => {
+    startingHold = false;
+    soundReady = false;
   });
 }
 
@@ -177,34 +205,13 @@ function canRing() {
   return navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
 }
 
-async function armSound() {
-  if (!canRing()) return;
-  alarm.loop = false;
-  alarm.muted = false;
-  alarm.volume = 1;
+window.addEventListener("pointerdown", () => {
   try {
-    alarm.currentTime = 0;
-    await alarm.play();
-    soundReady = true;
-    if (mode !== "ready" || !alerting) {
-      alarm.pause();
-      alarm.currentTime = 0;
+    if (alerting) {
+      if (alarm.paused) playRing(chimeId);
+      return;
     }
-  } catch {
-    soundReady = false;
-  }
-}
-
-function unlockSound(event) {
-  if (!canRing() || soundReady) return;
-  if (event.target && event.target.closest && event.target.closest("#ring")) return;
-  armSound();
-}
-
-window.addEventListener("pointerdown", (event) => {
-  try {
-    unlockSound(event);
-    keepAlertAfterLeaving();
+    holdOpen();
   } catch {
     // A tap must not close the page.
   }
@@ -212,15 +219,23 @@ window.addEventListener("pointerdown", (event) => {
 
 document.addEventListener("visibilitychange", () => {
   try {
-    if (document.hidden) {
-      alarm.loop = false;
-      alarm.pause();
-      if ("speechSynthesis" in window) speechSynthesis.cancel();
-      return;
-    }
-    if (alerting) playRing(chimeId);
+    if (document.hidden || !canRing()) return;
+    if (alerting && alarm.paused) playRing(chimeId);
+    else if (mode === "waiting" && alarm.paused) holdOpen();
   } catch {
-    // Leaving the page must not close it.
+    // Coming back must not close the page.
+  }
+});
+
+let lastHeard = 0;
+alarm.addEventListener("timeupdate", () => {
+  try {
+    const now = Date.now();
+    if (!number || now - lastHeard < 2000) return;
+    lastHeard = now;
+    lookup();
+  } catch {
+    // A missed check must not close the page.
   }
 });
 
@@ -233,10 +248,15 @@ async function keepAwake() {
 }
 
 function playRing(id) {
-  if (!canRing() || id !== chimeId || !alerting || document.hidden) return;
+  if (!canRing() || id !== chimeId || !alerting) return;
   alarm.loop = true;
   alarm.muted = false;
   alarm.volume = 1;
+  if (!filePlaying("alarm.wav")) alarm.src = "alarm.wav?v=7";
+  if (!alarm.paused && filePlaying("alarm.wav")) {
+    soundReady = true;
+    return;
+  }
   try { alarm.currentTime = 0; } catch { /* play from the start */ }
   const played = alarm.play();
   if (!played) return;
@@ -258,6 +278,7 @@ function stopChime() {
   alarm.pause();
   try { alarm.currentTime = 0; } catch { /* already stopped */ }
   ringButton.hidden = true;
+  clearLockScreen();
   if ("speechSynthesis" in window) speechSynthesis.cancel();
 }
 
@@ -300,6 +321,7 @@ function startChime(bill) {
   }
   ringButton.hidden = false;
   ringButton.textContent = "I see it";
+  showOnLockScreen("Your order is ready");
   playRing(chimeId);
 }
 
@@ -318,6 +340,7 @@ function showWaiting(order) {
   waitNumber.textContent = order.billNumber;
   show(waiting);
   paintClock();
+  holdOpen();
 }
 
 function showReady(order) {
@@ -358,8 +381,8 @@ async function startWatch(notify) {
   if (!number) return;
   if (notify) await notify;
   await keepAwake();
-  armSound();
-  if (canUsePush() && Notification.permission === "granted") keepAlertAfterLeaving();
+  holdOpen();
+  if (canUsePush() && typeof Notification !== "undefined" && Notification.permission === "granted") keepAlertAfterLeaving();
   await lookup();
   clearInterval(pollTimer);
   pollTimer = setInterval(lookup, 2000);
