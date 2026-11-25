@@ -23,6 +23,8 @@ const vapidPublicKey = "BE4aPqu9CkHScuixs2LAA-a88Rq6GoAeY-wBHDHA9aVqyX9ovPHt3Rti
 let soundReady = false;
 let alerting = false;
 let chimeId = 0;
+let phoneSaved = false;
+let savingPhone = false;
 
 function assignedNumber() {
   const bill = (new URLSearchParams(location.search).get("order") || "").trim();
@@ -66,9 +68,23 @@ function paintClock() {
   const seconds = shownSeconds();
   if (seconds === 0) clockEl.textContent = "Soon";
   else clockEl.textContent = clock(seconds);
+  if (isIos() && !isStandalone()) {
+    waitNote.textContent = "On iPhone, tap Share, then Add to Home Screen. Open that icon.";
+    return;
+  }
+  if (phoneSaved) {
+    waitNote.textContent = seconds === 0
+      ? "Any moment now. You can use other apps."
+      : "You can use other apps. The phone rings when the order is ready.";
+    return;
+  }
+  if (typeof Notification !== "undefined" && Notification.permission === "denied") {
+    waitNote.textContent = "Leave this page open. Your phone rings when the order is ready.";
+    return;
+  }
   waitNote.textContent = seconds === 0
     ? "Any moment now."
-    : "Keep this page open. Your phone rings when the order is ready.";
+    : "Tap the screen once and choose Allow. Then you can use other apps.";
 }
 
 function urlBase64ToUint8Array(value) {
@@ -90,7 +106,7 @@ function isStandalone() {
 }
 
 async function phoneSubscription() {
-  const registration = await navigator.serviceWorker.register("sw.js");
+  const registration = await navigator.serviceWorker.register("sw.js?v=2");
   await navigator.serviceWorker.ready;
   let subscription = await registration.pushManager.getSubscription();
   if (!subscription) {
@@ -107,18 +123,52 @@ async function rememberThisPhone() {
     try {
       const subscription = await phoneSubscription();
       const saved = await saveOrderAlert(number, subscription);
-      if (saved.ok) return;
+      if (saved.ok) return true;
     } catch {
-      // Try again. The page still rings while it stays open.
+      // Try again. A failed save must not close the page.
     }
   }
+  return false;
 }
 
-async function restoreAlerts() {
-  if (isIos() && !isStandalone()) return;
-  if (!("Notification" in window) || Notification.permission !== "granted") return;
-  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
-  await rememberThisPhone();
+function canUsePush() {
+  if (isIos() && !isStandalone()) return false;
+  return typeof Notification !== "undefined"
+    && "serviceWorker" in navigator
+    && "PushManager" in window;
+}
+
+function keepAlertAfterLeaving() {
+  if (phoneSaved || savingPhone || !canUsePush()) return;
+  if (Notification.permission === "denied") return;
+  if (Notification.permission === "granted") {
+    savingPhone = true;
+    rememberThisPhone().then((ok) => {
+      phoneSaved = ok === true;
+      savingPhone = false;
+      paintClock();
+    }).catch(() => {
+      savingPhone = false;
+    });
+    return;
+  }
+  let pending;
+  try {
+    pending = Notification.requestPermission();
+  } catch {
+    return;
+  }
+  savingPhone = true;
+  Promise.resolve(pending).then((result) => {
+    if (result !== "granted") return false;
+    return rememberThisPhone();
+  }).then((ok) => {
+    phoneSaved = ok === true;
+    savingPhone = false;
+    paintClock();
+  }).catch(() => {
+    savingPhone = false;
+  });
 }
 
 function canRing() {
@@ -151,8 +201,27 @@ function unlockSound(event) {
   armSound();
 }
 
-["pointerdown", "keydown"].forEach((eventName) => {
-  window.addEventListener(eventName, unlockSound, true);
+window.addEventListener("pointerdown", (event) => {
+  try {
+    unlockSound(event);
+    keepAlertAfterLeaving();
+  } catch {
+    // A tap must not close the page.
+  }
+}, true);
+
+document.addEventListener("visibilitychange", () => {
+  try {
+    if (document.hidden) {
+      alarm.loop = false;
+      alarm.pause();
+      if ("speechSynthesis" in window) speechSynthesis.cancel();
+      return;
+    }
+    if (alerting) playRing(chimeId);
+  } catch {
+    // Leaving the page must not close it.
+  }
 });
 
 async function keepAwake() {
@@ -164,7 +233,7 @@ async function keepAwake() {
 }
 
 function playRing(id) {
-  if (!canRing() || id !== chimeId || !alerting) return;
+  if (!canRing() || id !== chimeId || !alerting || document.hidden) return;
   alarm.loop = true;
   alarm.muted = false;
   alarm.volume = 1;
@@ -193,7 +262,7 @@ function stopChime() {
 }
 
 function notifyReady(bill) {
-  if (!canRing()) return;
+  if (!canRing() || document.hidden) return;
   const title = "Your order is ready";
   const body = "Order " + bill + ". Please come to the counter.";
   try {
@@ -210,7 +279,7 @@ function notifyReady(bill) {
 }
 
 function speakReady(bill) {
-  if (!canRing() || !("speechSynthesis" in window)) return;
+  if (!canRing() || document.hidden || !("speechSynthesis" in window)) return;
   const line = new SpeechSynthesisUtterance("Your order is ready. Order " + bill + ".");
   line.lang = "en";
   speechSynthesis.cancel();
@@ -224,7 +293,11 @@ function startChime(bill) {
   alerting = true;
   alarm.onended = null;
   notifyReady(bill);
-  if (navigator.vibrate) navigator.vibrate([400, 150, 400, 150, 400, 150, 700]);
+  try {
+    if (!document.hidden && navigator.vibrate) navigator.vibrate([400, 150, 400, 150, 400, 150, 700]);
+  } catch {
+    // Vibration is optional.
+  }
   ringButton.hidden = false;
   ringButton.textContent = "I see it";
   playRing(chimeId);
@@ -262,19 +335,23 @@ function showReady(order) {
 }
 
 async function lookup() {
-  const seq = ++lookupSeq;
-  const response = await shopFetch("/api/orders/lookup?number=" + encodeURIComponent(number));
-  if (seq !== lookupSeq) return;
-  if (response.status === 404) {
-    if (mode === "ready") return;
-    showEntry("Number " + number + " is not on the list yet. Ask the counter.");
-    return;
+  try {
+    const seq = ++lookupSeq;
+    const response = await shopFetch("/api/orders/lookup?number=" + encodeURIComponent(number));
+    if (seq !== lookupSeq) return;
+    if (response.status === 404) {
+      if (mode === "ready") return;
+      showEntry("Number " + number + " is not on the list yet. Ask the counter.");
+      return;
+    }
+    if (!response.ok) return;
+    const order = await response.json();
+    if (seq !== lookupSeq) return;
+    if (order.status === "ready") showReady(order);
+    else showWaiting(order);
+  } catch {
+    // A missed check must not close the page. The next one tries again.
   }
-  if (!response.ok) return;
-  const order = await response.json();
-  if (seq !== lookupSeq) return;
-  if (order.status === "ready") showReady(order);
-  else showWaiting(order);
 }
 
 async function startWatch(notify) {
@@ -282,7 +359,7 @@ async function startWatch(notify) {
   if (notify) await notify;
   await keepAwake();
   armSound();
-  restoreAlerts();
+  if (canUsePush() && Notification.permission === "granted") keepAlertAfterLeaving();
   await lookup();
   clearInterval(pollTimer);
   pollTimer = setInterval(lookup, 2000);

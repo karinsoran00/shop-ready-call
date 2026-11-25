@@ -4,6 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Ready Call">
   <title>Your order</title>
   <link rel="stylesheet" href="css/site.css">
   <link rel="manifest" href="manifest.json">
@@ -22,7 +25,7 @@
       <p class="lead">Bill number</p>
       <p id="wait-number" class="digits"></p>
       <p id="clock" class="clock">00:00</p>
-      <p id="wait-note" class="lead">Keep this page open. Your phone rings when the order is ready.</p>
+      <p id="wait-note" class="lead">The phone rings when the order is ready.</p>
     </section>
 
     <section id="ready" class="card stage is-ready" hidden>
@@ -35,6 +38,6 @@
   </div>
   <audio id="alarm" src="alarm.wav?v=7" playsinline preload="auto"></audio>
   <script src="js/shop-api.js?v=4"></script>
-  <script src="js/customer.js?v=15"></script>
+  <script src="js/customer.js?v=16"></script>
 </body>
 </html>
