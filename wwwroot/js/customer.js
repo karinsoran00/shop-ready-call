@@ -16,10 +16,13 @@ let number = "";
 let mode = "entry";
 let reviewUrl = "";
 let pollTimer = 0;
+let lookupSeq = 0;
 let remaining = 0;
 let syncedAt = 0;
 let wakeLock = null;
+const vapidPublicKey = "BE4aPqu9CkHScuixs2LAA-a88Rq6GoAeY-wBHDHA9aVqyX9ovPHt3Rti0GxOu57hRbjIuB_n6U625YHvPhXVQD4";
 let soundReady = false;
+let alertsOn = false;
 let alerting = false;
 let ringsLeft = 0;
 let chimeId = 0;
@@ -35,9 +38,8 @@ function show(section) {
   ready.hidden = section !== ready;
 }
 
-armButton.addEventListener("click", async () => {
-  await armSound();
-  paintClock();
+armButton.addEventListener("click", () => {
+  enableAlerts();
 });
 
 ringButton.addEventListener("click", async () => {
@@ -67,18 +69,80 @@ function paintClock() {
   const seconds = shownSeconds();
   if (seconds === 0) clockEl.textContent = "Soon";
   else clockEl.textContent = clock(seconds);
-  armButton.hidden = !canRing() || soundReady;
-  if (!canRing()) {
-    waitNote.textContent = seconds === 0 ? "Any moment now." : "Waiting for the order.";
+  armButton.hidden = alertsOn && soundReady;
+  if (isIos() && !isStandalone()) {
+    armButton.hidden = false;
+    waitNote.textContent = "On iPhone, tap Share, then Add to Home Screen. Open that icon and tap Turn alerts on.";
     return;
   }
-  if (!soundReady) {
-    waitNote.textContent = "Tap the button once. Then keep this page open.";
+  if (!alertsOn) {
+    waitNote.textContent = "Tap Turn alerts on. Then you can leave this page.";
     return;
   }
   waitNote.textContent = seconds === 0
-    ? "Any moment now. Keep this page open."
-    : "Sound is on. Keep this page open. The alert continues until you tap I see it.";
+    ? "Any moment now. You can leave this page."
+    : "Alerts are on. You can leave this page. The phone rings when the order is ready.";
+}
+
+function urlBase64ToUint8Array(value) {
+  const padding = "=".repeat((4 - value.length % 4) % 4);
+  const base64 = (value + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(base64);
+  const output = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i += 1) output[i] = raw.charCodeAt(i);
+  return output;
+}
+
+function isIos() {
+  const ua = navigator.userAgent || "";
+  return /iPhone|iPad|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
+function isStandalone() {
+  return window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+}
+
+async function enableAlerts() {
+  await armSound();
+  if (isIos() && !isStandalone()) {
+    paintClock();
+    return;
+  }
+  if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+    paintClock();
+    return;
+  }
+  const permission = await Notification.requestPermission();
+  if (permission !== "granted") {
+    waitNote.textContent = "Allow alerts so the phone can ring after you leave this page.";
+    return;
+  }
+  const registration = await navigator.serviceWorker.register("sw.js");
+  await navigator.serviceWorker.ready;
+  let subscription = await registration.pushManager.getSubscription();
+  if (!subscription) {
+    subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
+    });
+  }
+  alertsOn = await saveOrderAlert(number, subscription);
+  paintClock();
+}
+
+async function restoreAlerts() {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+  try {
+    const registration = await navigator.serviceWorker.register("sw.js");
+    await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+    if (!subscription) return;
+    alertsOn = await saveOrderAlert(number, subscription);
+    paintClock();
+  } catch {
+    alertsOn = false;
+  }
 }
 
 function canRing() {
@@ -223,7 +287,9 @@ function showReady(order) {
 }
 
 async function lookup() {
+  const seq = ++lookupSeq;
   const response = await shopFetch("/api/orders/lookup?number=" + encodeURIComponent(number));
+  if (seq !== lookupSeq) return;
   if (response.status === 404) {
     if (mode === "ready") return;
     showEntry("Number " + number + " is not on the list yet. Ask the counter.");
@@ -231,6 +297,7 @@ async function lookup() {
   }
   if (!response.ok) return;
   const order = await response.json();
+  if (seq !== lookupSeq) return;
   if (order.status === "ready") showReady(order);
   else showWaiting(order);
 }
@@ -239,6 +306,7 @@ async function startWatch(notify) {
   if (!number) return;
   if (notify) await notify;
   await keepAwake();
+  restoreAlerts();
   await lookup();
   clearInterval(pollTimer);
   pollTimer = setInterval(lookup, 2000);
@@ -256,7 +324,7 @@ shopFetch("/api/config")
   .catch(() => {});
 
 number = assignedNumber();
-if (number) startWatch(askNotify());
+if (number) startWatch();
 else showEntry("Scan the QR from the counter.");
 
 setInterval(paintClock, 1000);

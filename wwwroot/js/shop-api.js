@@ -147,3 +147,19 @@ function shopFetch(path, options) {
   if (isLocalServer()) return fetch(path, options);
   return sharedFetch(path, options);
 }
+
+async function saveOrderAlert(bill, subscription) {
+  if (isLocalServer()) return false;
+  const json = subscription.toJSON ? subscription.toJSON() : subscription;
+  const response = await fetch(sharedUrl.replace("/orders", "/rpc/save_alert"), {
+    method: "POST",
+    headers: sharedHeaders(),
+    body: JSON.stringify({
+      bill,
+      endpoint: json.endpoint,
+      p256dh: json.keys.p256dh,
+      auth: json.keys.auth
+    })
+  });
+  return response.ok;
+}

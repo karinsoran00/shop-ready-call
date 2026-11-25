@@ -6,6 +6,7 @@
   <meta name="robots" content="noindex">
   <title>Your order</title>
   <link rel="stylesheet" href="css/site.css">
+  <link rel="manifest" href="manifest.json">
 </head>
 <body>
   <div class="phone">
@@ -22,7 +23,7 @@
       <p id="wait-number" class="digits"></p>
       <p id="clock" class="clock">00:00</p>
       <p id="wait-note" class="lead">Keep this page open. Your phone rings when the order is ready.</p>
-      <button type="button" id="arm" class="primary">Tap once so the phone can ring</button>
+      <button type="button" id="arm" class="primary">Turn alerts on</button>
     </section>
 
     <section id="ready" class="card stage is-ready" hidden>
@@ -34,7 +35,7 @@
     </section>
   </div>
   <audio id="alarm" src="alarm.wav?v=7" playsinline preload="auto"></audio>
-  <script src="js/shop-api.js?v=2"></script>
-  <script src="js/customer.js?v=11"></script>
+  <script src="js/shop-api.js?v=3"></script>
+  <script src="js/customer.js?v=12"></script>
 </body>
 </html>

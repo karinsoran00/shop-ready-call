@@ -1,0 +1,9 @@
+{
+  "name": "Shop Ready-Call",
+  "short_name": "Ready Call",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f3eadf",
+  "theme_color": "#9a6b24"
+}
