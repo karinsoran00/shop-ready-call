@@ -64,6 +64,10 @@ function paintClock() {
   const seconds = shownSeconds();
   if (seconds === 0) clockEl.textContent = "Soon";
   else clockEl.textContent = clock(seconds);
+  if (!soundReady) {
+    waitNote.textContent = "Tap the screen once, then you can use other apps.";
+    return;
+  }
   waitNote.textContent = seconds === 0
     ? "Any moment now. You can use other apps."
     : "You can use other apps. The phone rings when the order is ready.";
@@ -176,14 +180,21 @@ function clearLockScreen() {
 
 let startingHold = false;
 
-function holdOpen() {
-  if (!canRing() || alerting || mode === "entry" || startingHold) return;
-  if (!alarm.paused && filePlaying("keepalive.wav")) return;
-  startingHold = true;
+function useAlarm() {
   alarm.loop = true;
   alarm.muted = false;
-  alarm.volume = 1;
-  if (!filePlaying("keepalive.wav")) alarm.src = "keepalive.wav?v=1";
+  if (!filePlaying("alarm.wav")) alarm.src = "alarm.wav?v=8";
+}
+
+function holdOpen() {
+  if (!canRing() || alerting || !number || startingHold) return;
+  useAlarm();
+  alarm.volume = 0;
+  if (!alarm.paused && filePlaying("alarm.wav")) {
+    soundReady = true;
+    return;
+  }
+  startingHold = true;
   const played = alarm.play();
   if (!played) {
     startingHold = false;
@@ -191,8 +202,11 @@ function holdOpen() {
   }
   played.then(() => {
     startingHold = false;
+    if (alerting) return;
+    alarm.volume = 0;
     soundReady = true;
     showOnLockScreen("Order " + number);
+    paintClock();
   }).catch(() => {
     startingHold = false;
     soundReady = false;
@@ -202,7 +216,8 @@ function holdOpen() {
 function canRing() {
   const ua = navigator.userAgent || "";
   if (/Android|iPhone|iPad|iPod|Mobile/i.test(ua)) return true;
-  return navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+  if (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) return true;
+  return window.matchMedia("(pointer: coarse)").matches;
 }
 
 window.addEventListener("pointerdown", () => {
@@ -249,10 +264,9 @@ async function keepAwake() {
 
 function playRing(id) {
   if (!canRing() || id !== chimeId || !alerting) return;
-  alarm.loop = true;
-  alarm.muted = false;
+  useAlarm();
   alarm.volume = 1;
-  if (!filePlaying("alarm.wav")) alarm.src = "alarm.wav?v=7";
+  showOnLockScreen("Your order is ready");
   if (!alarm.paused && filePlaying("alarm.wav")) {
     soundReady = true;
     return;
@@ -338,6 +352,7 @@ function showWaiting(order) {
   remaining = order.remainingSeconds;
   syncedAt = Date.now();
   waitNumber.textContent = order.billNumber;
+  document.title = "Your order";
   show(waiting);
   paintClock();
   holdOpen();
