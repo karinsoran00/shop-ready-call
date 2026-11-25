@@ -7,7 +7,6 @@ const clockEl = document.querySelector("#clock");
 const waitNote = document.querySelector("#wait-note");
 const readyNumber = document.querySelector("#ready-number");
 const readyLine = document.querySelector("#ready-line");
-const armButton = document.querySelector("#arm");
 const ringButton = document.querySelector("#ring");
 const reviewLink = document.querySelector("#review");
 const alarm = document.querySelector("#alarm");
@@ -22,10 +21,7 @@ let syncedAt = 0;
 let wakeLock = null;
 const vapidPublicKey = "BE4aPqu9CkHScuixs2LAA-a88Rq6GoAeY-wBHDHA9aVqyX9ovPHt3Rti0GxOu57hRbjIuB_n6U625YHvPhXVQD4";
 let soundReady = false;
-let alertsOn = false;
-let alertNote = "";
 let alerting = false;
-let ringsLeft = 0;
 let chimeId = 0;
 
 function assignedNumber() {
@@ -39,18 +35,18 @@ function show(section) {
   ready.hidden = section !== ready;
 }
 
-armButton.addEventListener("click", () => {
-  enableAlerts();
-});
-
 ringButton.addEventListener("click", async () => {
   if (!canRing()) return;
-  if (alerting && !alarm.paused) {
+  if (alerting && soundReady && !alarm.paused) {
     stopChime();
     readyLine.textContent = "Seen. Please come to the counter.";
     return;
   }
   await armSound();
+  if (alerting) {
+    playRing(chimeId);
+    return;
+  }
   startChime(readyNumber.textContent);
 });
 
@@ -70,19 +66,9 @@ function paintClock() {
   const seconds = shownSeconds();
   if (seconds === 0) clockEl.textContent = "Soon";
   else clockEl.textContent = clock(seconds);
-  armButton.hidden = alertsOn;
-  if (isIos() && !isStandalone()) {
-    armButton.hidden = false;
-    waitNote.textContent = "On iPhone, tap Share, then Add to Home Screen. Open that icon and tap Turn alerts on.";
-    return;
-  }
-  if (!alertsOn) {
-    waitNote.textContent = alertNote || "Tap Turn alerts on for this phone.";
-    return;
-  }
   waitNote.textContent = seconds === 0
-    ? "Any moment now. You can leave this page."
-    : "Alerts are on. You can leave this page. The phone rings when the order is ready.";
+    ? "Any moment now."
+    : "Keep this page open. Your phone rings when the order is ready.";
 }
 
 function urlBase64ToUint8Array(value) {
@@ -117,50 +103,15 @@ async function phoneSubscription() {
 }
 
 async function rememberThisPhone() {
-  let lastError = "This phone was not saved.";
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       const subscription = await phoneSubscription();
       const saved = await saveOrderAlert(number, subscription);
-      if (saved.ok) {
-        alertsOn = true;
-        alertNote = "";
-        return;
-      }
-      lastError = saved.error || lastError;
-    } catch (error) {
-      lastError = error && error.message ? error.message : lastError;
+      if (saved.ok) return;
+    } catch {
+      // Try again. The page still rings while it stays open.
     }
   }
-  alertsOn = false;
-  alertNote = "This phone was not saved. Tap Turn alerts on again.";
-}
-
-async function enableAlerts() {
-  await armSound();
-  alertNote = "";
-  if (isIos() && !isStandalone()) {
-    alertsOn = false;
-    paintClock();
-    return;
-  }
-  if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
-    alertsOn = false;
-    alertNote = "This phone cannot alert after you leave the page. Keep this page open.";
-    paintClock();
-    return;
-  }
-  const permission = await Notification.requestPermission();
-  if (permission !== "granted") {
-    alertsOn = false;
-    alertNote = "Tap Allow so this phone can ring after you leave the page.";
-    paintClock();
-    return;
-  }
-  armButton.disabled = true;
-  await rememberThisPhone();
-  armButton.disabled = false;
-  paintClock();
 }
 
 async function restoreAlerts() {
@@ -168,7 +119,6 @@ async function restoreAlerts() {
   if (!("Notification" in window) || Notification.permission !== "granted") return;
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
   await rememberThisPhone();
-  paintClock();
 }
 
 function canRing() {
@@ -195,15 +145,15 @@ async function armSound() {
   }
 }
 
-function askNotify() {
-  try {
-    if (!canRing() || !("Notification" in window) || !window.isSecureContext) return Promise.resolve();
-    if (Notification.permission !== "default") return Promise.resolve();
-    return Notification.requestPermission().catch(() => {});
-  } catch {
-    return Promise.resolve();
-  }
+function unlockSound(event) {
+  if (!canRing() || soundReady) return;
+  if (event.target && event.target.closest && event.target.closest("#ring")) return;
+  armSound();
 }
+
+["pointerdown", "keydown"].forEach((eventName) => {
+  window.addEventListener(eventName, unlockSound, true);
+});
 
 async function keepAwake() {
   try {
@@ -222,19 +172,18 @@ function playRing(id) {
   const played = alarm.play();
   if (!played) return;
   played.then(() => {
+    if (id !== chimeId || !alerting) return;
     soundReady = true;
+    speakReady(readyNumber.textContent);
   }).catch(() => {
     if (id !== chimeId) return;
-    ringButton.hidden = false;
-    ringButton.textContent = "Tap to ring";
-    readyLine.textContent = "Tap the button so the phone can ring.";
+    soundReady = false;
   });
 }
 
 function stopChime() {
   chimeId += 1;
   alerting = false;
-  ringsLeft = 0;
   alarm.onended = null;
   alarm.loop = false;
   alarm.pause();
@@ -277,9 +226,8 @@ function startChime(bill) {
   notifyReady(bill);
   if (navigator.vibrate) navigator.vibrate([400, 150, 400, 150, 400, 150, 700]);
   ringButton.hidden = false;
-  ringButton.textContent = soundReady ? "I see it" : "Tap to ring";
+  ringButton.textContent = "I see it";
   playRing(chimeId);
-  if (soundReady) speakReady(bill);
 }
 
 function showEntry(text) {
@@ -332,6 +280,7 @@ async function startWatch(notify) {
   if (!number) return;
   if (notify) await notify;
   await keepAwake();
+  armSound();
   restoreAlerts();
   await lookup();
   clearInterval(pollTimer);
