@@ -45,7 +45,6 @@ ringButton.addEventListener("click", () => {
     return;
   }
   if (alerting) playRing(chimeId);
-  else holdOpen();
 });
 
 function clock(seconds) {
@@ -64,13 +63,9 @@ function paintClock() {
   const seconds = shownSeconds();
   if (seconds === 0) clockEl.textContent = "Soon";
   else clockEl.textContent = clock(seconds);
-  if (!soundReady) {
-    waitNote.textContent = "Tap the screen once, then you can use other apps.";
-    return;
-  }
   waitNote.textContent = seconds === 0
-    ? "Any moment now. You can use other apps."
-    : "You can use other apps. The phone rings when the order is ready.";
+    ? "Any moment now."
+    : "The phone rings when the order is ready.";
 }
 
 function urlBase64ToUint8Array(value) {
@@ -154,7 +149,6 @@ function showOnLockScreen(title) {
       const resume = () => {
         try {
           if (alerting) playRing(chimeId);
-          else holdOpen();
         } catch {
           // The page stays open.
         }
@@ -178,37 +172,44 @@ function clearLockScreen() {
   }
 }
 
-let startingHold = false;
+let arming = false;
 
 function useAlarm() {
-  alarm.loop = true;
   alarm.muted = false;
-  if (!filePlaying("alarm.wav")) alarm.src = "alarm.wav?v=8";
+  alarm.volume = 1;
+  if (!filePlaying("alarm.wav")) alarm.src = "alarm.wav?v=9";
 }
 
-function holdOpen() {
-  if (!canRing() || alerting || !number || startingHold) return;
+function silence() {
+  if (alerting) return;
+  alarm.loop = false;
+  alarm.pause();
+  try { alarm.currentTime = 0; } catch { /* already quiet */ }
+}
+
+function armRing() {
+  if (!canRing() || alerting || !number || soundReady || arming) return;
+  arming = true;
   useAlarm();
-  alarm.volume = 0;
-  if (!alarm.paused && filePlaying("alarm.wav")) {
-    soundReady = true;
-    return;
-  }
-  startingHold = true;
+  alarm.loop = false;
   const played = alarm.play();
+  const quiet = () => {
+    if (alerting) return;
+    alarm.loop = false;
+    alarm.pause();
+    try { alarm.currentTime = 0; } catch { /* already quiet */ }
+  };
+  quiet();
   if (!played) {
-    startingHold = false;
+    arming = false;
     return;
   }
   played.then(() => {
-    startingHold = false;
-    if (alerting) return;
-    alarm.volume = 0;
+    arming = false;
+    quiet();
     soundReady = true;
-    showOnLockScreen("Order " + number);
-    paintClock();
   }).catch(() => {
-    startingHold = false;
+    arming = false;
     soundReady = false;
   });
 }
@@ -226,7 +227,7 @@ window.addEventListener("pointerdown", () => {
       if (alarm.paused) playRing(chimeId);
       return;
     }
-    holdOpen();
+    armRing();
   } catch {
     // A tap must not close the page.
   }
@@ -236,7 +237,6 @@ document.addEventListener("visibilitychange", () => {
   try {
     if (document.hidden || !canRing()) return;
     if (alerting && alarm.paused) playRing(chimeId);
-    else if (mode === "waiting" && alarm.paused) holdOpen();
   } catch {
     // Coming back must not close the page.
   }
@@ -265,9 +265,9 @@ async function keepAwake() {
 function playRing(id) {
   if (!canRing() || id !== chimeId || !alerting) return;
   useAlarm();
-  alarm.volume = 1;
+  alarm.loop = true;
   showOnLockScreen("Your order is ready");
-  if (!alarm.paused && filePlaying("alarm.wav")) {
+  if (!alarm.paused) {
     soundReady = true;
     return;
   }
@@ -355,7 +355,7 @@ function showWaiting(order) {
   document.title = "Your order";
   show(waiting);
   paintClock();
-  holdOpen();
+  silence();
 }
 
 function showReady(order) {
@@ -396,7 +396,6 @@ async function startWatch(notify) {
   if (!number) return;
   if (notify) await notify;
   await keepAwake();
-  holdOpen();
   if (canUsePush() && typeof Notification !== "undefined" && Notification.permission === "granted") keepAlertAfterLeaving();
   await lookup();
   clearInterval(pollTimer);
